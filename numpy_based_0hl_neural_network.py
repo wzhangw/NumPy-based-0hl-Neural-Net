@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn import metrics
 
 class NumPyBased0hlNeuralNetwork(object):
 
@@ -123,7 +124,7 @@ class NumPyBased0hlNeuralNetwork(object):
         # calcualte the gradient of the activated term dA
         dA = - (np.divide(Y, A) - np.divide((1.0 - Y), (1.0 - A)))
         # calculate the gradient of the linear output dZ
-        dZ = np.dot(dA, self.__sigmoid_derivative(Z))
+        dZ = np.multiply(dA, self.__sigmoid_derivative(Z))
         # calcualte the gradient of the weights dW
         dW = (1.0 / m) * np.dot(dZ, X.T)
         # calcualte the gradient of the bias term db
@@ -147,9 +148,9 @@ class NumPyBased0hlNeuralNetwork(object):
             if debug_mode:
                 print("Error: W.shape != dw.shape")
                 print("\tStack trace: NumPyBased0hlNeuralNetwork.__update_parameters()")
-        return None
+            return None
         # check the dimension of b & db
-        if b.shape != b.shape:
+        if b.shape != db.shape:
             if debug_mode:
                 print("Error: b.shape != db.shape")
                 print("\tStack trace: NumPyBased0hlNeuralNetwork.__update_parameters()")
@@ -175,6 +176,11 @@ class NumPyBased0hlNeuralNetwork(object):
     def __backward_propagation(self, X, Y, Z, A, W, b, learning_rate, debug_mode=True):
         # get the gradients
         dA, dZ, dW, db = self.__get_gradients(X=X, Y=Y, Z=Z, A=A, debug_mode=debug_mode)
+        # if debug_mode:
+        #     print("numpy_based_0hl_neural_network.__backward_propagation.dA.shape = " + str(dA.shape))
+        #     print("numpy_based_0hl_neural_network.__backward_propagation.dZ.shape = " + str(dZ.shape))
+        #     print("numpy_based_0hl_neural_network.__backward_propagation.dW.shape = " + str(dW.shape))
+        #     print("numpy_based_0hl_neural_network.__backward_propagation.db.shape = " + str(db.shape))
         # update the parameters
         W, b = self.__update_parameters(W=W, b=b, learning_rate=learning_rate, dW=dW, db=db, debug_mode=debug_mode)
         return (W, b)
@@ -192,7 +198,7 @@ class NumPyBased0hlNeuralNetwork(object):
     @param loss_plot_mode: (optional) a boolean value that indicates whether the loss plot mode is active; the default value is false
     @return a boolean value that indicates whether the fitting is successful
     """
-    def fit(self, X, Y, leaning_rate=0.001, decay_rate=0.1, early_stopping_point=1000, convergence_tolerance=0.001, batch_size=1, debug_mode=False, cost_plot_mode=True):
+    def fit(self, X, Y, learning_rate=0.001, decay_rate=0.1, early_stopping_point=1000, convergence_tolerance=0.001, batch_size=1, debug_mode=False, cost_plot_mode=True):
         # check the number of examples
         if X.shape[1] != Y.shape[1]:
             if debug_mode:
@@ -206,6 +212,11 @@ class NumPyBased0hlNeuralNetwork(object):
         self.__b = np.random.randn(self.__n_y, 1)
         self.__epoch_costs = []
         self.__iterative_costs = []
+        if debug_mode:
+            print("NumPyBased0hlNeuralNetwork.__n_x = " + str(self.__n_x))
+            print("NumPyBased0hlNeuralNetwork.__n_y = " + str(self.__n_y))
+            print("NumPyBased0hlNeuralNetwork.__W.shape = " + str(self.__W.shape))
+            print("NumPyBased0hlNeuralNetwork.__b.shape = " + str(self.__b.shape))
         # allocate batches
         m = Y.shape[1]
         if batch_size > m:
@@ -229,13 +240,13 @@ class NumPyBased0hlNeuralNetwork(object):
                     print("\tStack trace: NumPyBased0hlNeuralNetwork.fit()")
                 break
             # iterate through batches
-            for batch_index in range(numb_batches):
+            for batch_index in range(num_batches):
                 # get the batch based on batch index
                 X_batch = X_batches[batch_index]
                 Y_batch = Y_batches[batch_index]
                 # get the iterative cost and add to the iterative fitting log
                 Z_batch, A_batch = self.__forward_propagation(W=self.__W, X=X_batch, b=self.__b, debug_mode=debug_mode)
-                iterative_cost = self.__get_cost()
+                iterative_cost = self.__get_cost(Y=Y_batch, A=A_batch, debug_mode=debug_mode)
                 self.__iterative_costs.append(iterative_cost)
                 # backward propagation
                 self.__W, self.__b = self.__backward_propagation(X=X_batch, Y=Y_batch, Z=Z_batch, A=A_batch, W=self.__W, b=self.__b, learning_rate=learning_rate, debug_mode=debug_mode)
@@ -259,7 +270,7 @@ class NumPyBased0hlNeuralNetwork(object):
 
     @param X: the NumPy array of the inputs, shape = (n_x, m)
     @param debug_mode: (optional) a boolean value that indicates whether the debug mode is active; the default value is false
-    @return a tuple which contains (1) a NumPy array of the predicted labels, and (2) a NumPy array of the predicted labels in one-hot representation
+    @return a tuple which contains (1) a NumPy array of the predicted labels, and (2) a NumPy array of the predicted labels in one-hot encoding
     """
     def predict(self, X, debug_mode=False):
         # check number of features
@@ -269,10 +280,27 @@ class NumPyBased0hlNeuralNetwork(object):
                 print("\tStack trace: NumPyBased0hlNeuralNetwork.predict()")
             return None
         # forward propagation
-        A = self.__forward_propagation(W=self.__W, X=X, b=self.__b, debug_mode=debug_mode)
+        Z, A = self.__forward_propagation(W=self.__W, X=X, b=self.__b, debug_mode=debug_mode)
         # make classification
         predicted_classes = np.argmax(A, axis=0)
         predicted_onehots = np.zeros(A.shape)
         for col in range(A.shape[1]):
             predicted_onehots[predicted_classes[col], col] = 1
         return (predicted_classes, predicted_onehots)
+
+    """
+    Get the F1 score
+
+    @param Y_actual: the NumPy array of the actual labels
+    @param Y_predicted: the NumPy array of the predicted labels
+    @param average: the average method for multi-class problems; refer to scikit-learn documentation
+    @return the F1 score
+    """
+    def get_F1_score(self, Y_actual, Y_predicted, average="binary", debug_mode=False):
+        if Y_actual.shape != Y_predicted.shape:
+            if debug_mode:
+                print("Error: Y_actual.shape != Y_predicted.shape")
+                print("\tStack trace: NumPyBased0hlNeuralNetwork.get_F1_score()")
+            return None
+        F1_score = metrics.f1_score(Y_actual, Y_predicted, average=average)
+        return F1_score
